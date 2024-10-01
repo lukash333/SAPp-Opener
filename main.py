@@ -10,7 +10,7 @@ import tkinter as tk
 import urllib.request
 from typing import Optional, Tuple
 
-CURRENT_VERSION = 'v.1.1.0'
+CURRENT_VERSION = 'v.1.1.1'
 REPO_URL = 'api.github.com'
 RELEASE_PATH = f'/repos/lukash333/SAPp-Opener/releases/latest'
 
@@ -96,8 +96,12 @@ class ConfigManager:
 
     def get_position(self, key_x, key_y) -> Tuple[int, int]:
         """Retrieve the saved window position."""
-        x = self.config['DEFAULT'].getint(key_x, 0)
-        y = self.config['DEFAULT'].getint(key_y, 0)
+        if key_x in self.config['DEFAULT'] and key_y in self.config['DEFAULT']:
+            x = self.config['DEFAULT'].getint(key_x, 0)
+            y = self.config['DEFAULT'].getint(key_y, 0)
+        else:
+            x = self.config['DEFAULT'].getint('position_x', 0)
+            y = self.config['DEFAULT'].getint('position_y', 0)
         
         screen_width, screen_height = self.get_screen_size()
 
