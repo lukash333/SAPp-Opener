@@ -6,3 +6,10 @@ Depends on the input lenght, user can open SAP system:
 
 Additional commands are also avaliable and you can add them in config.ini file
 For now running exe apps is supported and webpages.
+
+Requirements:
+- Python Installed
+
+To easy run main.py withoud command prompt, you can create *.bat file like that:
+
+start /b pythonw "yourPath\main.py"
