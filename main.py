@@ -10,7 +10,7 @@ import tkinter as tk
 import urllib.request
 from typing import Optional, Tuple
 
-CURRENT_VERSION = 'v.1.0.9'
+CURRENT_VERSION = 'v.1.1.0'
 REPO_URL = 'api.github.com'
 RELEASE_PATH = f'/repos/lukash333/SAPp-Opener/releases/latest'
 
@@ -83,10 +83,10 @@ class ConfigManager:
         self.config.read(self.config_file)
         print(f"Loaded configuration from {self.config_file}.")
 
-    def write_position(self, x, y) -> None:
+    def write_position(self, x, y, key_x, key_y) -> None:
         """Save window position to config."""
-        self.config['DEFAULT']['position_x'] = str(x)
-        self.config['DEFAULT']['position_y'] = str(y)
+        self.config['DEFAULT'][key_x] = str(x)
+        self.config['DEFAULT'][key_y] = str(y)
         self.save()
 
     def save(self) -> None:
@@ -94,12 +94,11 @@ class ConfigManager:
         with self.config_file.open('w') as configfile:
             self.config.write(configfile)
 
-    def get_position(self) -> Tuple[int, int]:
+    def get_position(self, key_x, key_y) -> Tuple[int, int]:
         """Retrieve the saved window position."""
-        x = self.config['DEFAULT'].getint('position_x', 0)
-        y = self.config['DEFAULT'].getint('position_y', 0)
+        x = self.config['DEFAULT'].getint(key_x, 0)
+        y = self.config['DEFAULT'].getint(key_y, 0)
         
-    
         screen_width, screen_height = self.get_screen_size()
 
         if x > screen_width:
@@ -177,10 +176,11 @@ class Window:
         self.context_menu.add_command(label="Update", command=self.run_update, state="disabled")
         self.context_menu.add_command(label="Exit", command=self.root.destroy)
         self.context_menu.add_command(label="Reload", command=self.reload)
+
     def run_update(self):
 
         updater.update_application()
-    
+
     def reload(self):
         subprocess.Popen(['python', 'main.py'], creationflags=subprocess.CREATE_NO_WINDOW)
         os._exit(0)  # Exit the current process
@@ -191,7 +191,6 @@ class Window:
         if has_update:
             self.entry.insert(0, f"Update possible to {latest_version}")
             self.context_menu.entryconfig(1, state="active")
-
 
     def bind_events(self) -> None:
         """Bind events to their handlers."""
@@ -220,14 +219,20 @@ class Window:
     def on_motion(self, event) -> None:
         """Move the window if 'Move' is selected."""
         if self.move_var.get():
+            key_x = f"position_x_{root.winfo_screenwidth()}x{root.winfo_screenheight()}"
+            key_y = f"position_y_{root.winfo_screenwidth()}x{root.winfo_screenheight()}"
             x = event.x_root - self.root.x
             y = event.y_root - self.root.y
             self.root.geometry(f'+{x}+{y}')
-            self.config_manager.write_position(self.root.winfo_x(), self.root.winfo_y())
+            self.config_manager.write_position(self.root.winfo_x(), self.root.winfo_y(), key_x, key_y)
 
     def load_window_position(self) -> None:
         """Load and set window position."""
-        x, y = self.config_manager.get_position()
+
+        key_x = f"position_x_{root.winfo_screenwidth()}x{root.winfo_screenheight()}"
+        key_y = f"position_y_{root.winfo_screenwidth()}x{root.winfo_screenheight()}"
+
+        x, y = self.config_manager.get_position(key_x, key_y)
         if x or y:
             self.root.geometry(f'+{x}+{y}')
 
