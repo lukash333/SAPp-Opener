@@ -10,7 +10,7 @@ import tkinter as tk
 import urllib.request
 from typing import Optional, Tuple
 
-CURRENT_VERSION = 'v.1.0.6'
+CURRENT_VERSION = 'v.1.0.8'
 REPO_URL = 'api.github.com'
 RELEASE_PATH = f'/repos/lukash333/SAPp-Opener/releases/latest'
 
@@ -134,7 +134,7 @@ class ConfigManager:
                 print(f"Found sapshcut.exe at: {path}")
                 return str(path)
         print("sapshcut.exe not found.")
-        return None
+        return "None"
     
     def get_path(self, shortcut: str) -> Optional[Tuple[str,str]]:
         """Retrieve path and section type for the given shortcut."""
@@ -176,10 +176,14 @@ class Window:
         self.context_menu.add_checkbutton(label="Move", variable=self.move_var)
         self.context_menu.add_command(label="Update", command=self.run_update, state="disabled")
         self.context_menu.add_command(label="Exit", command=self.root.destroy)
-
+        self.context_menu.add_command(label="Reload", command=self.reload)
     def run_update(self):
 
         updater.update_application()
+    
+    def reload(self):
+        subprocess.Popen(['python', 'main.py'], creationflags=subprocess.CREATE_NO_WINDOW)
+        os._exit(0)  # Exit the current process
 
     def check_update(self):
         has_update, latest_release, latest_version = updater.check_update()
