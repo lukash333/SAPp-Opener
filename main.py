@@ -3,8 +3,16 @@ import pathlib
 import subprocess
 import sys
 import ctypes
+import os
+import http.client
+import json
 import tkinter as tk
+import urllib.request
 from typing import Optional, Tuple
+
+CURRENT_VERSION = 'v.1.0.6'
+REPO_URL = 'api.github.com'
+RELEASE_PATH = f'/repos/lukash333/SAPp-Opener/releases/latest'
 
 class ConfigManager:
     """Handles reading, writing, and accessing configuration settings."""
@@ -53,7 +61,7 @@ class ConfigManager:
         return {
             'DEFAULT': {
                 'app_name': 'SAP Opener',
-                'version': '1.2',  # Updated version
+                'version': CURRENT_VERSION,  # Updated version
                 'position_x': '0',
                 'position_y': '0',
                 'sapshcut_path': self.find_sapshcut_exe(),
@@ -148,6 +156,7 @@ class Window:
         self.create_widgets()
         self.bind_events()
         self.start_bring_to_front()
+        self.check_update()
 
     def setup_window(self) -> None:
         """Configure the main window properties."""
@@ -164,8 +173,21 @@ class Window:
         self.entry.pack(pady=1)
 
         self.context_menu = tk.Menu(self.root, tearoff=0)
-        self.context_menu.add_command(label="Exit", command=self.root.destroy)
         self.context_menu.add_checkbutton(label="Move", variable=self.move_var)
+        self.context_menu.add_command(label="Update", command=self.run_update, state="disabled")
+        self.context_menu.add_command(label="Exit", command=self.root.destroy)
+
+    def run_update(self):
+
+        updater.update_application()
+
+    def check_update(self):
+        has_update, latest_release, latest_version = updater.check_update()
+
+        if has_update:
+            self.entry.insert(0, f"Update possible to {latest_version}")
+            self.context_menu.entryconfig(1, state="active")
+
 
     def bind_events(self) -> None:
         """Bind events to their handlers."""
@@ -215,6 +237,7 @@ class Window:
         self.root.after(500, self.bring_to_front)
 
 class InputProcessor:
+
     def __init__(self, input_string: str):
         self.input_string = input_string.lower()
         shortcut_details = config_manager.get_path(self.input_string)
@@ -222,7 +245,6 @@ class InputProcessor:
             self.process_configured(shortcut_details)
         else:
             self.process_unconfigured()
-
 
     def process_unconfigured(self) -> None:
         """Process SAP input depending on its length."""
@@ -295,8 +317,69 @@ class InputProcessor:
         except subprocess.CalledProcessError as e:
             print(f"Error launching SAP GUI: {e}")
 
+class Updater:
+    
+    def get_latest_release_info(self):
+        """Fetches the latest release information from GitHub."""
+        conn = http.client.HTTPSConnection(REPO_URL)
+        headers = {
+            'User-Agent': 'SAPp-Opener'  # Use your application's name here
+        }
+
+        conn.request("GET", RELEASE_PATH, headers=headers)
+        response = conn.getresponse()
+        
+        if response.status != 200:
+            raise Exception(f"Failed to fetch release info: {response.status}")
+        
+        data = response.read()
+        conn.close()
+        return json.loads(data)
+    
+    def download_file(self, file_url, local_filename):
+        try:
+            with urllib.request.urlopen(file_url) as response:
+                with open(local_filename, 'wb') as f:
+                    f.write(response.read())
+            print(f'File downloaded successfully as {local_filename}')
+        except Exception as e:    
+            print(f'An error occurred: {e}')
+            
+    def update_application(self):
+        
+        has_update, latest_release, latest_version = self.check_update()
+
+        if has_update:
+            print(f"Updating from version {CURRENT_VERSION} to {latest_version}...")
+
+            # Iterate through the assets and download the .py files
+            for asset in latest_release['assets']:
+                if asset['name'].endswith('.py'):
+                    self.download_file(asset['browser_download_url'], asset['name'])
+                    print(f"Downloaded {asset['name']}")
+
+            print("Update completed. Restarting the application...")
+            
+            # Restart the application
+            subprocess.Popen(['python', 'main.py'], creationflags=subprocess.CREATE_NO_WINDOW)
+            os._exit(0)  # Exit the current process
+        else:
+            print(f"Current and Update versions are the same {latest_version}")
+
+    def check_update(self):
+
+        from packaging.version import Version
+
+        latest_release = self.get_latest_release_info()
+        latest_version = latest_release['tag_name']
+        
+        if Version(latest_version[2:]) > Version(CURRENT_VERSION[2:]):
+            return True, latest_release, latest_version
+        return False, None, None
+
 if __name__ == "__main__":
     config_manager = ConfigManager()
+    updater = Updater()
 
     root = tk.Tk()
     app = Window(root, config_manager)
