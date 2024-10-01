@@ -10,7 +10,7 @@ import tkinter as tk
 import urllib.request
 from typing import Optional, Tuple
 
-CURRENT_VERSION = 'v.1.0.8'
+CURRENT_VERSION = 'v.1.0.9'
 REPO_URL = 'api.github.com'
 RELEASE_PATH = f'/repos/lukash333/SAPp-Opener/releases/latest'
 
@@ -266,7 +266,10 @@ class InputProcessor:
         """Process pre-configured shortcuts."""
         link, link_type  = details
         if link_type  == 'APP':
-            subprocess.Popen(link)
+            try:
+                subprocess.Popen(link)
+            except FileNotFoundError as e:
+                print(f"Error: {e}")
         elif link_type  == 'WEB':
             self.open_webpage(link)
         else:
@@ -306,6 +309,10 @@ class InputProcessor:
     def run_sap_gui(self, client: Optional[str] = None, language: Optional[str] = None, system: Optional[str] = None, transaction: Optional[str] = None) -> None:
         command = [config_manager.sappath]
 
+        if command == ['None']:
+            print(f"SAP Shortcut not installed")
+            return
+        
         if client:
             command.append(f"-client={client}")
         if language:
