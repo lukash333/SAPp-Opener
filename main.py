@@ -10,7 +10,7 @@ import tkinter as tk
 import urllib.request
 from typing import Optional, Tuple
 
-CURRENT_VERSION = 'v.1.1.1'
+CURRENT_VERSION = 'v.1.1.3'
 REPO_URL = 'api.github.com'
 RELEASE_PATH = f'/repos/lukash333/SAPp-Opener/releases/latest'
 
@@ -153,6 +153,9 @@ class Window:
         self.config_manager = config_manager
         self.move_var = tk.BooleanVar(value=False)
 
+        self.prev_width = root.winfo_screenwidth()
+        self.prev_height = root.winfo_screenheight()
+
         self.root = root
         self.setup_window()
         self.load_window_position()
@@ -160,6 +163,7 @@ class Window:
         self.bind_events()
         self.start_bring_to_front()
         self.check_update()
+        self.check_resolution_change()
 
     def setup_window(self) -> None:
         """Configure the main window properties."""
@@ -239,6 +243,16 @@ class Window:
         x, y = self.config_manager.get_position(key_x, key_y)
         if x or y:
             self.root.geometry(f'+{x}+{y}')
+    
+    def check_resolution_change(self):
+        current_width = self.root.winfo_screenwidth()
+        current_height = self.root.winfo_screenheight()
+
+        if (current_width, current_height) != (self.prev_width, self.prev_height):
+            self.prev_width, self.prev_height = current_width, current_height
+            self.load_window_position()
+
+        self.root.after(1000, self.check_resolution_change)
 
     def start_bring_to_front(self) -> None:
         """Keep bringing the window to the front."""
@@ -388,12 +402,15 @@ class Updater:
 
     def check_update(self):
 
-        from packaging.version import Version
+        import re
 
         latest_release = self.get_latest_release_info()
         latest_version = latest_release['tag_name']
+
+        latest_version_tuple = tuple(map(int, re.findall(r'\d+', latest_version)))
+        current_version_tuple = tuple(map(int, re.findall(r'\d+', CURRENT_VERSION)))
         
-        if Version(latest_version[2:]) > Version(CURRENT_VERSION[2:]):
+        if latest_version_tuple > current_version_tuple:
             return True, latest_release, latest_version
         return False, None, None
 
