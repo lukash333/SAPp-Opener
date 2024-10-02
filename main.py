@@ -10,7 +10,7 @@ import tkinter as tk
 import urllib.request
 from typing import Optional, Tuple
 
-CURRENT_VERSION = 'v.1.1.3'
+CURRENT_VERSION = 'v.1.1.4'
 REPO_URL = 'api.github.com'
 RELEASE_PATH = f'/repos/lukash333/SAPp-Opener/releases/latest'
 
@@ -81,9 +81,8 @@ class ConfigManager:
     def _load_config(self) -> None:
         """Load the config file."""
         self.config.read(self.config_file)
-        print(f"Loaded configuration from {self.config_file}.")
 
-    def write_position(self, x, y, key_x, key_y) -> None:
+    def write_position(self, x: int, y: int, key_x: str, key_y: str) -> None:
         """Save window position to config."""
         self.config['DEFAULT'][key_x] = str(x)
         self.config['DEFAULT'][key_y] = str(y)
@@ -94,14 +93,10 @@ class ConfigManager:
         with self.config_file.open('w') as configfile:
             self.config.write(configfile)
 
-    def get_position(self, key_x, key_y) -> Tuple[int, int]:
+    def get_position(self, key_x: str, key_y: str) -> Tuple[int, int]:
         """Retrieve the saved window position."""
-        if key_x in self.config['DEFAULT'] and key_y in self.config['DEFAULT']:
-            x = self.config['DEFAULT'].getint(key_x, 0)
-            y = self.config['DEFAULT'].getint(key_y, 0)
-        else:
-            x = self.config['DEFAULT'].getint('position_x', 0)
-            y = self.config['DEFAULT'].getint('position_y', 0)
+        x = self.config['DEFAULT'].getint(key_x, self.config['DEFAULT'].getint('position_x', 0))
+        y = self.config['DEFAULT'].getint(key_y, self.config['DEFAULT'].getint('position_y', 0))
         
         screen_width, screen_height = self.get_screen_size()
 
@@ -111,16 +106,12 @@ class ConfigManager:
         if y > screen_height:
             y = screen_height - 200
 
-        print(screen_width, screen_height)
-
         return x, y
 
     def get_screen_size(self) -> Tuple[int, int]:
         """Get screen size using Windows API."""
         user32 = ctypes.windll.user32
-        screen_width = user32.GetSystemMetrics(0)  
-        screen_height = user32.GetSystemMetrics(1)  
-        return screen_width, screen_height
+        return user32.GetSystemMetrics(0), user32.GetSystemMetrics(1)
 
     def get_def_client(self, system: str) -> Optional[str]:
         """Return the client for the given system from the DEFAULT_SAP_CLIENT section."""
@@ -130,23 +121,20 @@ class ConfigManager:
         """Search for sapshcut.exe in common directories."""
         if self.config.has_option('DEFAULT','sapshcut_path'):
             return self.config.get('DEFAULT','sapshcut_path')
+        
         search_dirs = [pathlib.Path(r"C:\Program Files"), pathlib.Path(r"C:\Program Files (x86)")]
 
         for directory in search_dirs:
             for path in directory.rglob('sapshcut.exe'):
-                print(f"Found sapshcut.exe at: {path}")
                 return str(path)
-        print("sapshcut.exe not found.")
         return "None"
     
     def get_path(self, shortcut: str) -> Optional[Tuple[str,str]]:
         """Retrieve path and section type for the given shortcut."""
-        if self.config.has_option('APP', shortcut):
-            return self.config.get('APP', shortcut), 'APP'
-        elif self.config.has_option('WEB', shortcut):
-            return self.config.get('WEB', shortcut), 'WEB'
-        else:
-            return None
+        for section in ['APP', 'WEB']:
+            if self.config.has_option(section, shortcut):
+                return self.config.get(section, shortcut), section
+        return None
 
 class Window:
     def __init__(self, root: tk.Tk, config_manager: ConfigManager):
@@ -185,15 +173,14 @@ class Window:
         self.context_menu.add_command(label="Exit", command=self.root.destroy)
         self.context_menu.add_command(label="Reload", command=self.reload)
 
-    def run_update(self):
-
+    def run_update(self) -> None:
         updater.update_application()
 
-    def reload(self):
+    def reload(self) -> None:
         subprocess.Popen(['python', 'main.py'], creationflags=subprocess.CREATE_NO_WINDOW)
         os._exit(0)  # Exit the current process
 
-    def check_update(self):
+    def check_update(self) -> None:
         has_update, latest_release, latest_version = updater.check_update()
 
         if has_update:
@@ -244,7 +231,7 @@ class Window:
         if x or y:
             self.root.geometry(f'+{x}+{y}')
     
-    def check_resolution_change(self):
+    def check_resolution_change(self) -> None:
         current_width = self.root.winfo_screenwidth()
         current_height = self.root.winfo_screenheight()
 
@@ -289,14 +276,17 @@ class InputProcessor:
         """Process pre-configured shortcuts."""
         link, link_type  = details
         if link_type  == 'APP':
-            try:
-                subprocess.Popen(link)
-            except FileNotFoundError as e:
-                print(f"Error: {e}")
+            self.run_application(link)
         elif link_type  == 'WEB':
             self.open_webpage(link)
         else:
             print('App type not recognized')
+
+    def run_application(self, link: str) -> None:
+        try:
+            subprocess.Popen(link)
+        except FileNotFoundError as e:
+            print(f"Error: {e}")
 
     def open_webpage(self, url: str) -> None:
         """Open a webpage based on the input string."""
@@ -356,10 +346,7 @@ class Updater:
     def get_latest_release_info(self):
         """Fetches the latest release information from GitHub."""
         conn = http.client.HTTPSConnection(REPO_URL)
-        headers = {
-            'User-Agent': 'SAPp-Opener'  # Use your application's name here
-        }
-
+        headers = {'User-Agent': 'SAPp-Opener'}
         conn.request("GET", RELEASE_PATH, headers=headers)
         response = conn.getresponse()
         
@@ -370,12 +357,11 @@ class Updater:
         conn.close()
         return json.loads(data)
     
-    def download_file(self, file_url, local_filename):
+    def download_file(self, file_url: str, local_filename: str) -> None:
         try:
             with urllib.request.urlopen(file_url) as response:
                 with open(local_filename, 'wb') as f:
                     f.write(response.read())
-            print(f'File downloaded successfully as {local_filename}')
         except Exception as e:    
             print(f'An error occurred: {e}')
             
@@ -385,8 +371,6 @@ class Updater:
 
         if has_update:
             print(f"Updating from version {CURRENT_VERSION} to {latest_version}...")
-
-            # Iterate through the assets and download the .py files
             for asset in latest_release['assets']:
                 if asset['name'].endswith('.py'):
                     self.download_file(asset['browser_download_url'], asset['name'])
@@ -394,9 +378,8 @@ class Updater:
 
             print("Update completed. Restarting the application...")
             
-            # Restart the application
             subprocess.Popen(['python', 'main.py'], creationflags=subprocess.CREATE_NO_WINDOW)
-            os._exit(0)  # Exit the current process
+            os._exit(0) 
         else:
             print(f"Current and Update versions are the same {latest_version}")
 
