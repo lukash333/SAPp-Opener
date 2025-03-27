@@ -8,11 +8,14 @@ import http.client
 import json
 import tkinter as tk
 import urllib.request
+import importlib.util
 from typing import Optional, Tuple
 
-CURRENT_VERSION = 'v.1.1.4'
+CURRENT_VERSION = 'v.1.1.8'
 REPO_URL = 'api.github.com'
 RELEASE_PATH = f'/repos/lukash333/SAPp-Opener/releases/latest'
+
+active_instances = {}
 
 class ConfigManager:
     """Handles reading, writing, and accessing configuration settings."""
@@ -66,6 +69,7 @@ class ConfigManager:
                 'position_y': '0',
                 'sapshcut_path': self.find_sapshcut_exe(),
                 'default_sap_lang': 'EN',
+                'tool_width': '300',
             },
             'DEFAULT_SAP_CLIENT': {
                 'QG1': '200'
@@ -75,7 +79,8 @@ class ConfigManager:
             },
             'WEB': {
                 'w': 'https://pl.wikipedia.org/wiki/'
-            }
+            },
+            'PY': {}
         }
 
     def _load_config(self) -> None:
@@ -116,6 +121,9 @@ class ConfigManager:
     def get_def_client(self, system: str) -> Optional[str]:
         """Return the client for the given system from the DEFAULT_SAP_CLIENT section."""
         return self.config['DEFAULT_SAP_CLIENT'].get(system, None)
+    
+    def get_tool_width(self) -> int:
+        return self.config.get('DEFAULT','tool_width')
 
     def find_sapshcut_exe(self) -> Optional[str]:
         """Search for sapshcut.exe in common directories."""
@@ -131,7 +139,7 @@ class ConfigManager:
     
     def get_path(self, shortcut: str) -> Optional[Tuple[str,str]]:
         """Retrieve path and section type for the given shortcut."""
-        for section in ['APP', 'WEB']:
+        for section in ['APP', 'WEB', 'PY']:
             if self.config.has_option(section, shortcut):
                 return self.config.get(section, shortcut), section
         return None
@@ -156,7 +164,7 @@ class Window:
     def setup_window(self) -> None:
         """Configure the main window properties."""
         self.root.title("Simple Widget App")
-        self.root.geometry("300x100")
+        self.root.geometry(f"{self.config_manager.get_tool_width()}x100")
         self.root.attributes('-topmost', True)
         self.root.config(bg='magenta')
         self.root.attributes('-transparentcolor', 'magenta')
@@ -172,9 +180,13 @@ class Window:
         self.context_menu.add_command(label="Update", command=self.run_update, state="disabled")
         self.context_menu.add_command(label="Exit", command=self.root.destroy)
         self.context_menu.add_command(label="Reload", command=self.reload)
+        self.context_menu.add_command(label="Config", command=self.config_open)
 
     def run_update(self) -> None:
         updater.update_application()
+
+    def config_open(self) -> None:
+        subprocess.run(["notepad", "config.ini"])
 
     def reload(self) -> None:
         subprocess.Popen(['python', 'main.py'], creationflags=subprocess.CREATE_NO_WINDOW)
@@ -202,10 +214,19 @@ class Window:
         self.entry.delete(0, tk.END)
 
     def show_context_menu(self, event) -> None:
-        """Display the context menu."""
-        menu_x = self.root.winfo_x() + self.root.winfo_width() - 50
-        menu_y = self.root.winfo_y()
-        self.context_menu.post(menu_x, menu_y)            
+        self.root.after_cancel(self.bring_to_front_id)
+
+        menu_x = self.root.winfo_rootx() + self.root.winfo_width() - 50
+        menu_y = self.root.winfo_rooty()
+
+        self.context_menu.post(menu_x, menu_y)     
+        self.root.after(100, self.check_menu_closed)
+
+    def check_menu_closed(self) -> None:
+        if not self.context_menu.winfo_ismapped():
+            self.start_bring_to_front()  # Restart bring-to-front loop
+        else:
+            self.root.after(100, self.check_menu_closed)  # Keep checking       
 
     def start_move(self, event) -> None:
         """Start window movement."""
@@ -248,7 +269,7 @@ class Window:
     def bring_to_front(self) -> None:
         """Bring the window to the front."""
         self.root.lift()
-        self.root.after(500, self.bring_to_front)
+        self.bring_to_front_id = self.root.after(500, self.bring_to_front)
 
 class InputProcessor:
 
@@ -279,8 +300,42 @@ class InputProcessor:
             self.run_application(link)
         elif link_type  == 'WEB':
             self.open_webpage(link)
+        elif link_type == 'PY':
+            self.run_python(link)
         else:
             print('App type not recognized')
+
+    def run_python(self, py_file: str) -> None:
+
+        class_name = py_file[:-3].capitalize()
+
+        if os.path.exists(py_file):
+            try:
+                spec = importlib.util.spec_from_file_location(class_name, py_file)
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+                cls = getattr(module, class_name)
+            except Exception as e:
+                print(f"Error importing class from {py_file}: {e}")
+                return
+        else:
+            print(f"Python file {py_file} not found!")
+        
+        if cls:
+            if class_name in active_instances:
+                instance = active_instances[class_name]
+                if hasattr(instance, 'stop'):
+                    instance.stop()
+                    del active_instances[class_name]
+                else:
+                    instance.run()
+            else:
+                instance = cls()
+                instance.run()
+                active_instances[class_name] = instance
+        else: 
+            print(f"Failed to load class {class_name} from {py_file}")
+
 
     def run_application(self, link: str) -> None:
         try:
@@ -344,18 +399,22 @@ class InputProcessor:
 class Updater:
     
     def get_latest_release_info(self):
-        """Fetches the latest release information from GitHub."""
-        conn = http.client.HTTPSConnection(REPO_URL)
-        headers = {'User-Agent': 'SAPp-Opener'}
-        conn.request("GET", RELEASE_PATH, headers=headers)
-        response = conn.getresponse()
-        
-        if response.status != 200:
-            raise Exception(f"Failed to fetch release info: {response.status}")
-        
-        data = response.read()
-        conn.close()
-        return json.loads(data)
+        try:
+            """Fetches the latest release information from GitHub."""
+            conn = http.client.HTTPSConnection(REPO_URL)
+            headers = {'User-Agent': 'SAPp-Opener'}
+            conn.request("GET", RELEASE_PATH, headers=headers)
+            response = conn.getresponse()
+            
+            if response.status != 200:
+                raise Exception(f"Failed to fetch release info: {response.status}")
+            
+            data = response.read()
+            conn.close()
+            return json.loads(data)
+        except (http.client.HTTPException, ConnectionError, OSError) as e:
+            print(f"Warning: Could not check for updates due to network error: {e}")
+            return None 
     
     def download_file(self, file_url: str, local_filename: str) -> None:
         try:
@@ -388,6 +447,9 @@ class Updater:
         import re
 
         latest_release = self.get_latest_release_info()
+        if latest_release is None:
+            print("Skipping update check due to network issues.")
+            return False, None, None
         latest_version = latest_release['tag_name']
 
         latest_version_tuple = tuple(map(int, re.findall(r'\d+', latest_version)))
